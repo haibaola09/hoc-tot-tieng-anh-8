@@ -1,0 +1,6 @@
+{
+  "name": "Tieng Anh 8 Global Success",
+  "description": "Ứng dụng học tiếng Anh lớp 8 tương tác thông minh với Trợ lý AI, từ vựng và bài tập theo sách giáo khoa Global Success",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
