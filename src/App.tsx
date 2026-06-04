@@ -7,6 +7,7 @@ import ReadingTab from "./components/ReadingTab";
 import QuizTab from "./components/QuizTab";
 import AiCompanionTab from "./components/AiCompanionTab";
 import ProgressAndAchievements from "./components/ProgressAndAchievements";
+import UnitsProgressBoard from "./components/UnitsProgressBoard";
 import { CURRICULUM } from "./data/enhanced_curriculum";
 import { UserProgress, ChatMessage } from "./types";
 import { Award, BookOpen, MessageSquare, ListTodo, Trophy, PartyPopper, Newspaper } from "lucide-react";
@@ -60,22 +61,43 @@ export default function App() {
   const [showCelebration, setShowCelebration] = useState(false);
   const [celebrationMessage, setCelebrationMessage] = useState("");
 
-  // Sync to local storage on select changes
-  useEffect(() => {
-    const updatedProgress = { ...progress, selectedUnitId: activeUnitId };
-    localStorage.setItem(LOCAL_STORAGE_PROGRESS_KEY, JSON.stringify(updatedProgress));
-    setProgress(updatedProgress);
-  }, [activeUnitId]);
+  // Custom dialog modal state
+  const [modal, setModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: "alert" | "confirm";
+    onConfirm?: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "alert",
+  });
 
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_LEARNED_WORDS_KEY, JSON.stringify(learnedWords));
-    // update learned count in progress
-    setProgress((prev) => {
-      const draft = { ...prev, learnedVocabularyCount: learnedWords.length };
-      localStorage.setItem(LOCAL_STORAGE_PROGRESS_KEY, JSON.stringify(draft));
-      return draft;
+  const showModal = (
+    title: string,
+    message: string,
+    type: "alert" | "confirm" = "alert",
+    onConfirm?: () => void
+  ) => {
+    setModal({
+      isOpen: true,
+      title,
+      message,
+      type,
+      onConfirm,
     });
-  }, [learnedWords]);
+  };
+
+  const handleSelectUnit = (unitId: number) => {
+    setActiveUnitId(unitId);
+    setProgress((prev) => {
+      const updated = { ...prev, selectedUnitId: unitId };
+      localStorage.setItem(LOCAL_STORAGE_PROGRESS_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_CHAT_KEY, JSON.stringify(chatMessages));
@@ -87,18 +109,23 @@ export default function App() {
   const totalVocabCount = CURRICULUM.reduce((sum, curr) => sum + curr.vocabulary.length, 0);
 
   const handleMarkLearned = (word: string) => {
-    setLearnedWords((prev) => {
-      const isAlreadyLearned = prev.includes(word);
-      let updated;
-      if (isAlreadyLearned) {
-        updated = prev.filter((w) => w !== word);
-      } else {
-        updated = [...prev, word];
-        // celebrate with small speech Synthesis
-        triggerCelebration(`Tuyệt vời! Bạn đã thuộc từ ${word}!`);
-      }
-      return updated;
+    const isAlreadyLearned = learnedWords.includes(word);
+    const updatedWords = isAlreadyLearned
+      ? learnedWords.filter((w) => w !== word)
+      : [...learnedWords, word];
+    
+    setLearnedWords(updatedWords);
+    localStorage.setItem(LOCAL_STORAGE_LEARNED_WORDS_KEY, JSON.stringify(updatedWords));
+
+    setProgress((prev) => {
+      const draft = { ...prev, learnedVocabularyCount: updatedWords.length };
+      localStorage.setItem(LOCAL_STORAGE_PROGRESS_KEY, JSON.stringify(draft));
+      return draft;
     });
+
+    if (!isAlreadyLearned) {
+      triggerCelebration(`Tuyệt vời! Bạn đã thuộc từ ${word}!`);
+    }
   };
 
   const triggerCelebration = (msg: string) => {
@@ -205,21 +232,35 @@ export default function App() {
   };
 
   const handleClearChat = () => {
-    if (confirm("Xóa toàn bộ cuộc trò chuyện với cô giáo AI Hương Tươi để bắt đầu lại nhé?")) {
-      setChatMessages([]);
-    }
+    showModal(
+      "Xóa Lịch Sử Chat",
+      "Bạn có chắc chắn muốn xóa toàn bộ cuộc trò chuyện với cô giáo AI Hương Tươi để bắt đầu lại?",
+      "confirm",
+      () => {
+        setChatMessages([]);
+        localStorage.removeItem(LOCAL_STORAGE_CHAT_KEY);
+        triggerCelebration("Đã xóa sạch lịch sử trò chuyện!");
+      }
+    );
   };
 
   const handleResetProgress = () => {
-    localStorage.removeItem(LOCAL_STORAGE_PROGRESS_KEY);
-    localStorage.removeItem(LOCAL_STORAGE_LEARNED_WORDS_KEY);
-    localStorage.removeItem(LOCAL_STORAGE_CHAT_KEY);
-    setProgress(DEFAULT_PROGRESS);
-    setLearnedWords([]);
-    setChatMessages([]);
-    setActiveUnitId(1);
-    setViewState("study");
-    alert("Đã làm mới tất cả tiến độ đạt sao và huy hiệu!");
+    showModal(
+      "Xác Nhận Đặt Lại",
+      "Bạn có chắc chắn muốn đặt lại tất cả tiến trình học tập? Tất cả các mốc sao, thành tựu huy hiệu và từ vựng đã học sẽ được làm mới về 0.",
+      "confirm",
+      () => {
+        localStorage.removeItem(LOCAL_STORAGE_PROGRESS_KEY);
+        localStorage.removeItem(LOCAL_STORAGE_LEARNED_WORDS_KEY);
+        localStorage.removeItem(LOCAL_STORAGE_CHAT_KEY);
+        setProgress(DEFAULT_PROGRESS);
+        setLearnedWords([]);
+        setChatMessages([]);
+        setActiveUnitId(1);
+        setViewState("study");
+        triggerCelebration("Đã làm mới tất cả tiến độ đạt sao và huy hiệu! ⭐");
+      }
+    );
   };
 
   return (
@@ -247,8 +288,17 @@ export default function App() {
             <UnitSelector 
               units={CURRICULUM} 
               selectedUnitId={activeUnitId} 
-              onSelectUnit={setActiveUnitId} 
+              onSelectUnit={handleSelectUnit} 
               progress={progress}
+            />
+
+            {/* 12 Units Progress Board */}
+            <UnitsProgressBoard
+              units={CURRICULUM}
+              progress={progress}
+              learnedWords={learnedWords}
+              selectedUnitId={activeUnitId}
+              onSelectUnit={handleSelectUnit}
             />
 
             {/* Navigation Tabbed Interface */}
@@ -373,6 +423,46 @@ export default function App() {
         )}
 
       </main>
+
+      {/* Custom Modal Dialog */}
+      {modal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-xs transition-all duration-300">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm sm:max-w-md w-full overflow-hidden p-6 text-left space-y-4 transform transition-all scale-100 duration-300 animate-in fade-in zoom-in-95">
+            <div className="flex items-center space-x-3 text-indigo-750">
+              <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl shrink-0">
+                <PartyPopper className="h-6 w-6" />
+              </div>
+              <h4 className="text-base sm:text-lg font-black tracking-tight text-slate-900 leading-snug uppercase">
+                {modal.title}
+              </h4>
+            </div>
+            
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-semibold">
+              {modal.message}
+            </p>
+
+            <div className="flex items-center justify-end space-x-3 pt-2.5">
+              {modal.type === "confirm" && (
+                <button
+                  onClick={() => setModal((prev) => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 text-xs sm:text-sm font-extrabold transition-all cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setModal((prev) => ({ ...prev, isOpen: false }));
+                  if (modal.onConfirm) modal.onConfirm();
+                }}
+                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs sm:text-sm font-extrabold transition-all shadow-md hover:shadow-lg cursor-pointer"
+              >
+                Đồng ý
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

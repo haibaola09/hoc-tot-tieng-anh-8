@@ -117,9 +117,7 @@ export default function ProgressAndAchievements({ progress, totalVocabCount, lea
   const totalBadgesEarned = BADGES_CONFIG.filter((b) => b.condition).length;
 
   const handleResetClick = () => {
-    if (confirm("Bạn có chắc chắn muốn ĐẶT LẠI toàn bộ tiến trình học tập? Tất cả các mốc sao, thành tích badge và từ vựng đã học sẽ được làm mới về 0.")) {
-      onResetProgress();
-    }
+    onResetProgress();
   };
 
   return (

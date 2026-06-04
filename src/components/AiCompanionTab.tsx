@@ -2,6 +2,132 @@ import { MessageSquare, Send, RotateCcw, AlertCircle, HelpCircle, Check, Play, G
 import { ChatMessage, UnitData } from "../types";
 import { useState, useRef, useEffect, FormEvent } from "react";
 
+// Unit-specific starter and follow-up suggested replies
+const getFallbackSuggestions = (unitId: number): string[] => {
+  const fallbacks: Record<number, string[]> = {
+    1: [
+      "Let's practice some vocab on leisure activities! 🎨",
+      "Cô ơi, làm thế nào để nói về sở thích tự chế (handmade)?",
+      "How do I use 'be keen on' in a sentence?"
+    ],
+    2: [
+      "Let's chat about peaceful countryside life! 🌾",
+      "Cô giải thích giúp em cách dùng các trạng từ tần suất.",
+      "Can you give me an example with 'hospitable'?"
+    ],
+    3: [
+      "I want to practice talking about school pressure. 🎒",
+      "Cô ơi, làm sao để giải tỏa áp lực từ bạn bè?",
+      "Can we practice making a sentence with 'however'?"
+    ],
+    4: [
+      "Tell me more about the Tây Nguyên people! 🏔️",
+      "Em muốn học về nhà Rông của Tây Nguyên cô ơi.",
+      "How do we say 'bản sắc văn hóa' in English?"
+    ],
+    5: [
+      "What is the difference between custom and tradition? 🏮",
+      "Cô ơi, kể cho em về một số phong tục cúng tổ tiên.",
+      "How do we say 'kính lão đắc thọ' or 'gần gũi'?"
+    ],
+    6: [
+      "What are the traditional table manners in other nations? 🍜",
+      "Em muốn luyện đóng vai (roleplay) gọi món bằng tiếng Anh.",
+      "How do you define 'lifestyle'?"
+    ],
+    7: [
+      "What is carbon footprint and how to reduce it? 🌱",
+      "Dạy em một số động từ liên quan đến bảo vệ môi trường hằng ngày.",
+      "How do I say 'năng lượng tái tạo'?"
+    ],
+    8: [
+      "How do I ask for price discounts when shopping? 🛒",
+      "Em làm người mua, cô đóng vai người bán mặc cả nhé!",
+      "What is 'convenience store' and 'open-air market'?"
+    ],
+    9: [
+      "What should we pack in an emergency rescue kit? ⚡",
+      "Cô hãy kiểm tra từ vựng về thiên tai (natural disasters) của em.",
+      "How do we prep for heavy rain or storms?"
+    ],
+    10: [
+      "How will people communicate in 50 years? 🛸",
+      "Cô ơi, thần giao cách cảm (telepathy) là gì ạ?",
+      "Let's practice vocabulary on communication channels!"
+    ],
+    11: [
+      "What biometric technology will we use in the future? 🤖",
+      "AI sẽ thay thế các phương thức học hiện tại không cô?",
+      "How do I use future continuous tense correctly?"
+    ],
+    12: [
+      "Are we alone in the universe? 🪐",
+      "Dạy em tên các hành tinh trong hệ mặt trời bằng tiếng Anh cô ơi.",
+      "Could you explain the indirect speech rule in Unit 12?"
+    ],
+  };
+
+  return fallbacks[unitId] || [
+    "Yes, I understand! Thank you, teacher! ❤️",
+    "Cô giảng thêm kèm ví dụ dễ hiểu về mặt ngữ pháp được không cô?",
+    "Em sẵn sàng làm đề thi thử rồi cô ơi!"
+  ];
+};
+
+// Parser to extract dynamic suggested replies and style errors/corrections matching student needs
+function parseMessage(content: string, isUser: boolean) {
+  if (isUser) {
+    return {
+      nodes: [content],
+      suggestions: []
+    };
+  }
+
+  // 1. Extract suggested replies wrapped in [suggest: reply text]
+  const suggestRegex = /\[suggest:\s*([^\]]+?)\s*\]/g;
+  const suggestions: string[] = [];
+  let match;
+  while ((match = suggestRegex.exec(content)) !== null) {
+    suggestions.push(match[1]);
+  }
+
+  // 2. Clear out matched suggestions from text bubble itself so they are only clicked below
+  const textWithoutSuggestions = content.replace(/\[suggest:\s*([^\]]+?)\s*\]/g, "").trim();
+
+  // 3. Segment text by [del: misspelled] and [ins: correct] tags for red/green visual badges
+  const tokenRegex = /(\[del:\s*[^\]]+?\s*\]|\[ins:\s*[^\]]+?\s*\])/g;
+  const parts = textWithoutSuggestions.split(tokenRegex);
+
+  const nodes = parts.map((part, index) => {
+    if (part.startsWith("[del:")) {
+      const mistake = part.slice(5, -1).trim();
+      return (
+        <span 
+          key={`del-${index}`} 
+          className="inline-flex items-center mx-1 px-1.5 py-0.5 rounded-lg bg-rose-50 text-rose-700 line-through font-extrabold text-[11px] sm:text-xs border border-rose-250 shadow-3xs"
+          title="Lỗi viết sai / Grammar issue"
+        >
+          {mistake}
+        </span>
+      );
+    } else if (part.startsWith("[ins:")) {
+      const correction = part.slice(5, -1).trim();
+      return (
+        <span 
+          key={`ins-${index}`} 
+          className="inline-flex items-center mx-1 px-1.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 font-extrabold text-[11px] sm:text-xs border border-emerald-250 shadow-3xs"
+          title="Sửa từ/cụm từ chuẩn xác"
+        >
+          {correction}
+        </span>
+      );
+    }
+    return part;
+  });
+
+  return { nodes, suggestions };
+}
+
 interface AiCompanionTabProps {
   unit: UnitData;
   chatMessages: ChatMessage[];
@@ -175,35 +301,58 @@ export default function AiCompanionTab({ unit, chatMessages, onSendMessage, onCl
         )}
 
         {/* Render actual chat array */}
-        {chatMessages.map((msg) => {
+        {chatMessages.map((msg, index) => {
           const isUser = msg.role === 'user';
+          const { nodes, suggestions } = parseMessage(msg.content, isUser);
+          const isLatest = index === chatMessages.length - 1;
+          const showSuggestionsForThisMessage = !isUser && isLatest && !isSending;
+
           return (
-            <div
-              key={msg.id}
-              className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}
-            >
-              {!isUser && (
-                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs shrink-0 select-none border border-indigo-200">
-                  👩‍🏫
-                </div>
-              )}
-              
-              <div className={`max-w-[80%] sm:max-w-md rounded-2xl p-3 text-xs sm:text-sm text-left shadow-xs border ${
-                isUser
-                  ? "bg-indigo-600 text-white border-indigo-500 rounded-tr-none"
-                  : "bg-white text-slate-800 border-slate-200 rounded-tl-none leading-relaxed"
-              }`}>
-                {/* Paragraph spacing in messages */}
-                <p className="whitespace-pre-wrap">{msg.content}</p>
+            <div key={msg.id} className="space-y-2">
+              <div
+                className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}
+              >
+                {!isUser && (
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs shrink-0 select-none border border-indigo-200">
+                    👩‍🏫
+                  </div>
+                )}
                 
-                <div className={`text-[10px] mt-1.5 text-right select-none ${isUser ? "text-indigo-200" : "text-slate-400"}`}>
-                  {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div className={`max-w-[80%] sm:max-w-md rounded-2xl p-3 text-xs sm:text-sm text-left shadow-xs border ${
+                  isUser
+                    ? "bg-indigo-600 text-white border-indigo-500 rounded-tr-none"
+                    : "bg-white text-slate-800 border-slate-200 rounded-tl-none leading-relaxed"
+                }`}>
+                  {/* Paragraph spacing in messages */}
+                  <p className="whitespace-pre-wrap">{nodes}</p>
+                  
+                  <div className={`text-[10px] mt-1.5 text-right select-none ${isUser ? "text-indigo-200" : "text-slate-400"}`}>
+                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
                 </div>
+
+                {isUser && (
+                  <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs shrink-0 font-bold border border-slate-300">
+                    Me
+                  </div>
+                )}
               </div>
 
-              {isUser && (
-                <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center text-xs shrink-0 font-bold border border-slate-300">
-                  Me
+              {/* Suggested dynamic replies */}
+              {showSuggestionsForThisMessage && (
+                <div className="flex flex-wrap gap-1.5 justify-start pl-10.5 pt-0.5 pb-1">
+                  {(suggestions.length > 0 ? suggestions : getFallbackSuggestions(unit.id)).map((s, idx) => (
+                    <button
+                      key={`sugg-${idx}`}
+                      type="button"
+                      disabled={isSending}
+                      onClick={() => onSendMessage(s)}
+                      className="bg-indigo-50/70 hover:bg-indigo-100/80 border border-indigo-100 hover:border-indigo-300 text-[10px] sm:text-xs font-semibold py-1 px-2.5 rounded-full text-indigo-700 transition-all outline-hidden active:scale-95 inline-flex items-center gap-1.5 shadow-3xs cursor-pointer select-none"
+                    >
+                      <span className="text-[11px]">💬</span>
+                      <span className="truncate max-w-[180px] sm:max-w-xs">{s}</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
