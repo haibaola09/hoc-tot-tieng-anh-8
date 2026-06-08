@@ -142,12 +142,37 @@ export default function QuizTab({ unitTitle, unitId, quizzes: originalQuizzes, o
       if (correct) setScore((prev) => prev + 1);
     }
     else if (currentQuiz.type === 'error_correction') {
-      // For error correction, since it's hard to auto-grade free text precisely,
-      // we show the correct answer and mark it correct just for trying, 
-      // or check if input contains keywords. Let's make it friendly
-      setIsCorrect(true);
+      const userInput = wordFormInput.trim().toLowerCase().replace(/\s+/g, ' ');
+      const correctAnsStr = currentQuiz.correctAnswer.trim().toLowerCase().replace(/\s+/g, ' ');
+
+      let correct = userInput === correctAnsStr;
+
+      if (!correct) {
+        // Parse transitions like "more hard -> harder" or "about -> on"
+        const parts = correctAnsStr.split(/-\>|->|to/);
+        if (parts.length >= 2) {
+          const wrongPart = parts[0].trim();
+          const rightPart = parts[1].trim();
+          
+          // Exact matches of the corrected right part: eg "harder"
+          const isExactRight = userInput === rightPart;
+          
+          // Contains both the incorrect word and corrected word: eg "change more hard to harder"
+          const containsBoth = userInput.includes(wrongPart) && userInput.includes(rightPart);
+          
+          // Split user input into words with punctuation to check if they typed the correct word as part of a sentence
+          const words = userInput.split(/[\s,.\-\>]+/);
+          const hasRightWord = words.includes(rightPart);
+
+          if (isExactRight || containsBoth || hasRightWord) {
+            correct = true;
+          }
+        }
+      }
+
+      setIsCorrect(correct);
       setIsAnswered(true);
-      setScore((prev) => prev + 1);
+      if (correct) setScore((prev) => prev + 1);
     }
   };
 

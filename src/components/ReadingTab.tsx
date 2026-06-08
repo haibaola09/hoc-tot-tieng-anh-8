@@ -216,8 +216,8 @@ export default function ReadingTab({ unitId, progress, onUpdateStars }: ReadingT
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6" id={`reading_tab_${unitId}`}>
       
-      {/* LEFT COLUMN: Passage & Image (8 cols out of 12) */}
-      <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+      {/* LEFT COLUMN: Passage & Image (8 cols out of 12) - Sticky on desktop so it stays on screen when questions are scrolled */}
+      <div className="lg:col-span-7 xl:col-span-8 space-y-6 lg:sticky lg:top-[74px] lg:max-h-[calc(100vh-116px)] lg:overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
         
         {/* Reading Passage Card */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">

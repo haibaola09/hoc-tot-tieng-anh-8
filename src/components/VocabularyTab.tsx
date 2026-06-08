@@ -17,6 +17,65 @@ export default function VocabularyTab({ vocabulary, progress, onMarkLearned, lea
   const [cardIndex, setCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
 
+  // Word Test State for automatic evaluation
+  const [activeTestWord, setActiveTestWord] = useState<VocabularyItem | null>(null);
+  const [testType, setTestType] = useState<"quiz" | "spelling" | null>(null);
+  const [testOptions, setTestOptions] = useState<string[]>([]);
+  const [selectedTestOption, setSelectedTestOption] = useState<string | null>(null);
+  const [spellingInput, setSpellingInput] = useState("");
+  const [testState, setTestState] = useState<"not_submitted" | "correct" | "incorrect">("not_submitted");
+
+  const handleStartTest = (vocab: VocabularyItem) => {
+    setActiveTestWord(vocab);
+    setSpellingInput("");
+    setSelectedTestOption(null);
+    setTestState("not_submitted");
+
+    // Filter other words from vocabulary as distraction options
+    const others = vocabulary.filter((v) => v.word !== vocab.word);
+    
+    if (others.length < 2) {
+      // Fallback to spelling/typing input if there aren't enough words
+      setTestType("spelling");
+    } else {
+      // 50% chance of spelling/multiple choice
+      const ranType = Math.random() > 0.5 ? "spelling" : "quiz";
+      setTestType(ranType);
+
+      if (ranType === "quiz") {
+        // Collect distractors
+        const shuffledOthers = [...others].sort(() => 0.5 - Math.random());
+        const distractors = shuffledOthers.slice(0, 2).map((v) => v.vietnamese);
+        
+        // Assemble options
+        const options = [vocab.vietnamese, ...distractors].sort(() => 0.5 - Math.random());
+        setTestOptions(options);
+      }
+    }
+  };
+
+  const handleVerifyAnswer = () => {
+    if (!activeTestWord || !testType) return;
+
+    let isCorrectAnswer = false;
+    if (testType === "quiz") {
+      isCorrectAnswer = selectedTestOption === activeTestWord.vietnamese;
+    } else {
+      const sanitizedInput = spellingInput.trim().toLowerCase().replace(/\s+/g, ' ');
+      const sanitizedCorrect = activeTestWord.word.trim().toLowerCase().replace(/\s+/g, ' ');
+      isCorrectAnswer = sanitizedInput === sanitizedCorrect;
+    }
+
+    if (isCorrectAnswer) {
+      setTestState("correct");
+      if (!learnedWords.includes(activeTestWord.word)) {
+        onMarkLearned(activeTestWord.word);
+      }
+    } else {
+      setTestState("incorrect");
+    }
+  };
+
   // Filter vocabulary by search query
   const filteredVocab = vocabulary.filter((vocab) =>
     vocab.word.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -128,10 +187,10 @@ export default function VocabularyTab({ vocabulary, progress, onMarkLearned, lea
                     <th className="px-3 sm:px-4 py-3 text-xs font-bold text-slate-400 uppercase">Từ / Phát Âm</th>
                     <th className="px-3 sm:px-4 py-3 text-xs font-bold text-slate-400 uppercase">Loại từ / Nghĩa</th>
                     <th className="px-3 sm:px-4 py-3 text-xs font-bold text-slate-400 uppercase hidden md:table-cell">Ví dụ</th>
-                    <th className="px-3 sm:px-4 py-3 text-xs font-bold text-slate-400 uppercase text-center">Học</th>
+                    <th className="px-3 sm:px-4 py-3 text-xs font-bold text-slate-400 uppercase text-center">Đánh giá 🧠</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="divide-y divide-slate-100 bg-white font-medium">
                   {filteredVocab.map((vocab) => {
                     const isLearned = learnedWords.includes(vocab.word);
                     return (
@@ -166,19 +225,26 @@ export default function VocabularyTab({ vocabulary, progress, onMarkLearned, lea
                           <div className="text-[11px] text-slate-400 italic mt-0.5">{vocab.exampleVie}</div>
                         </td>
 
-                        {/* Mark learned status */}
+                        {/* Automatic learned evaluation */}
                         <td className="px-3 sm:px-4 py-3.5 text-center">
-                          <button
-                            onClick={() => onMarkLearned(vocab.word)}
-                            className={`p-1.5 rounded-full transition-all border shrink-0 inline-flex items-center justify-center cursor-pointer ${
-                              isLearned
-                                ? "bg-emerald-50 border-emerald-200 text-emerald-600"
-                                : "hover:bg-slate-50 border-slate-200 text-slate-300 hover:text-slate-600"
-                            }`}
-                            title={isLearned ? "Đã thành thạo từ này" : "Đánh dấu đã ôn thuộc"}
-                          >
-                            <CheckCircle2 className="h-5 w-5" />
-                          </button>
+                          {isLearned ? (
+                            <button
+                              onClick={() => handleStartTest(vocab)}
+                              className="inline-flex items-center space-x-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-250 hover:border-emerald-350 rounded-xl text-xs font-black transition-all cursor-pointer shadow-3xs"
+                              title="Bạn đã thuộc từ này! Nhấp vào để chơi kiểm tra ôn lại."
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                              <span>Đã Thuộc ⭐</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleStartTest(vocab)}
+                              className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold transition-all shadow-xs hover:shadow-md cursor-pointer flex items-center justify-center space-x-1 mx-auto"
+                            >
+                              <span>Kiểm tra</span>
+                              <span className="text-[10px]">📝</span>
+                            </button>
+                          )}
                         </td>
 
                       </tr>
@@ -265,20 +331,23 @@ export default function VocabularyTab({ vocabulary, progress, onMarkLearned, lea
                 {/* Mark Learned inside card */}
                 <div className="border-t border-slate-100 pt-3 flex justify-between items-center bg-white/50 -mx-6 -mb-6 px-6 pb-4 rounded-b-3xl">
                   <span className="text-xs text-slate-400 font-medium">Ấn vào thẻ để đảo nghĩa</span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onMarkLearned(currentFlashcard.word);
-                    }}
-                    className={`flex items-center space-x-1 border hover:bg-slate-50 px-2.5 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-all ${
-                      learnedWords.includes(currentFlashcard.word)
-                        ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                        : "border-slate-200 text-slate-500"
-                    }`}
-                  >
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
-                    <span>{learnedWords.includes(currentFlashcard.word) ? "Đã Thuộc" : "Chưa Thuộc"}</span>
-                  </button>
+                  {learnedWords.includes(currentFlashcard.word) ? (
+                    <div className="flex items-center space-x-1 bg-emerald-50 border border-emerald-250 text-emerald-700 px-3 py-1.5 rounded-xl text-xs font-black">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                      <span>Đã Thuộc ⭐</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartTest(currentFlashcard);
+                      }}
+                      className="flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-xl text-xs font-black cursor-pointer transition-all shadow-2xs hover:shadow-sm"
+                    >
+                      <span>Kiểm tra</span>
+                      <span className="text-[10px]">📝</span>
+                    </button>
+                  )}
                 </div>
 
               </div>
@@ -309,6 +378,173 @@ export default function VocabularyTab({ vocabulary, progress, onMarkLearned, lea
 
             </div>
           )}
+        </div>
+      )}
+
+      {/* Dynamic Word Assessment Modal - Autocreated based on student needs */}
+      {activeTestWord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/65 backdrop-blur-xs transition-all duration-300">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-sm sm:max-w-md w-full overflow-hidden p-6 text-left space-y-5 transform transition-all scale-100 duration-300 animate-in fade-in zoom-in-95">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-indigo-50">
+              <div className="flex items-center space-x-2.5 text-indigo-750">
+                <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-2xl shrink-0">
+                  <BookOpen className="h-5 w-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm sm:text-base font-black tracking-tight text-slate-800 uppercase leading-snug">
+                    Kiểm Tra Từ Vựng 🧠
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tự động đánh giá kiến thức</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setActiveTestWord(null)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-all font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Test Content */}
+            <div className="space-y-4">
+              {testType === "quiz" ? (
+                /* Multiple Choice layout */
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Chọn nghĩa đúng của từ sau:</p>
+                  <div className="p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100 text-center relative overflow-hidden">
+                    <span className="absolute top-2 left-2 px-1.5 py-0.5 bg-indigo-100 text-indigo-750 rounded text-[9px] font-bold uppercase">{activeTestWord.pos}</span>
+                    <h3 className="text-2xl font-black text-indigo-900 tracking-tight">{activeTestWord.word}</h3>
+                    <p className="text-xs text-slate-450 italic font-medium font-mono mt-1">{activeTestWord.phonetic}</p>
+                    {/* Speak Button */}
+                    <button
+                      onClick={(e) => handleSpeak(activeTestWord.word, e)}
+                      className="mt-2.5 px-3 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-[10px] font-extrabold text-indigo-600 inline-flex items-center gap-1 cursor-pointer shadow-3xs"
+                    >
+                      <Volume2 className="h-3 w-3" /> Nghe âm mẫu
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2.5 pt-1">
+                    {testOptions.map((opt, oIdx) => {
+                      const isSelected = selectedTestOption === opt;
+                      const isOptionCorrect = opt === activeTestWord.vietnamese;
+                      return (
+                        <button
+                          key={oIdx}
+                          disabled={testState !== "not_submitted"}
+                          onClick={() => setSelectedTestOption(opt)}
+                          className={`w-full text-left p-3 rounded-xl border text-xs sm:text-sm transition-all flex items-center justify-between cursor-pointer ${
+                            testState !== "not_submitted"
+                              ? isOptionCorrect
+                                ? "bg-emerald-50 border-emerald-350 text-emerald-850 font-extrabold"
+                                : isSelected
+                                  ? "bg-red-50 border-red-250 text-red-800"
+                                  : "border-slate-100 text-slate-300"
+                              : isSelected
+                                ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-extrabold scale-102"
+                                : "bg-white hover:bg-slate-50 border-slate-200 text-slate-700 font-semibold"
+                          }`}
+                        >
+                          <span className="pr-2 leading-relaxed">{opt}</span>
+                          {testState !== "not_submitted" && isOptionCorrect && (
+                            <span className="text-[9px] bg-emerald-100 text-emerald-850 px-1.5 py-0.5 rounded font-black shrink-0">Đáp án chính xác</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* Spelling layout */
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Viết từ tiếng Anh tương ứng với nghĩa sau:</p>
+                  
+                  <div className="p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 text-center">
+                    <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight leading-relaxed">
+                      "{activeTestWord.vietnamese}"
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Loại từ: {activeTestWord.pos}</p>
+                  </div>
+
+                  <div className="space-y-2 pt-1 text-left">
+                    <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
+                      <span>NHẬP TỪ TIẾNG ANH (Không viết hoa đầu từ):</span>
+                      <span>Gợi ý: {activeTestWord.word.length} chữ, bắt đầu bằng "{activeTestWord.word[0]}"</span>
+                    </div>
+                    <input
+                      type="text"
+                      disabled={testState !== "not_submitted"}
+                      autoFocus
+                      placeholder={`Ví dụ: nhập từ bắt đầu bắng '${activeTestWord.word[0]}'...`}
+                      value={spellingInput}
+                      onChange={(e) => setSpellingInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && testState === "not_submitted" && spellingInput.trim()) {
+                          handleVerifyAnswer();
+                        }
+                      }}
+                      className={`w-full px-4 py-3 rounded-xl border text-sm font-semibold transition-all focus:outline-hidden ${
+                        testState !== "not_submitted"
+                          ? testState === "correct"
+                            ? "bg-emerald-50 border-emerald-350 text-emerald-900"
+                            : "bg-red-50 border-red-250 text-red-900"
+                          : "bg-slate-50 focus:bg-white border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 font-mono"
+                      }`}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Answer Feedbacks & Guidance of virtual teacher Huong Tuoi */}
+            {testState !== "not_submitted" && (
+              <div className={`p-4 rounded-xl border text-xs leading-relaxed space-y-1.5 text-left transition-all duration-300 ${
+                testState === "correct"
+                  ? "bg-emerald-50 border-emerald-250 text-slate-700"
+                  : "bg-red-50 border-red-250 text-slate-700"
+              }`}>
+                <div className="flex items-center space-x-1.5 font-black text-xs sm:text-sm">
+                  {testState === "correct" ? (
+                    <span className="text-emerald-750">✓ Cô giáo AI Hương Tươi chấm: ĐÚNG RỒI! 🎉</span>
+                  ) : (
+                    <span className="text-red-750">✗ Cô giáo AI Hương Tươi chấm: SAI RỒI! 💡</span>
+                  )}
+                </div>
+                <p className="font-semibold text-slate-600">
+                  {testState === "correct" 
+                    ? `Tuyệt vời! Em đã hoàn toàn học thuộc và vượt qua thử thách cho từ "${activeTestWord.word}". Hệ thống đã ghi nhận ngôi sao mới cho em!`
+                    : `Chưa chính xác rồi em ơi. Đáp án đúng của từ này phải viết là: "${activeTestWord.word}" (đồng nghĩa: ${activeTestWord.vietnamese}). Hãy cố gắng ôn và kiểm tra lại nhé!`
+                  }
+                </p>
+              </div>
+            )}
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end space-x-2.5 pt-2.5 border-t border-slate-100">
+              {testState === "not_submitted" ? (
+                <button
+                  onClick={handleVerifyAnswer}
+                  disabled={testType === "quiz" ? !selectedTestOption : !spellingInput.trim()}
+                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all shadow-md flex-1 text-center cursor-pointer ${
+                    (testType === "quiz" ? selectedTestOption : spellingInput.trim())
+                      ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                      : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  }`}
+                >
+                  Nộp câu trả lời ➔
+                </button>
+              ) : (
+                <button
+                  onClick={() => setActiveTestWord(null)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-black transition-all shadow-md cursor-pointer flex-1 text-center"
+                >
+                  Xong
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
